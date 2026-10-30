@@ -14,6 +14,7 @@
 const C = window.CONFIG || {};
 const R = C.waferRadius ?? 15;          // 웨이퍼 반지름(cm)
 const RULER_LEN = C.rulerLength ?? 30;  // 자 길이(cm)
+const RANGE = C.reliableRange ?? 10;    // 공정 신뢰 포지션 범위(±cm)
 const $ = id => document.getElementById(id);
 // 1 decimal by default; 2 decimals only when the value actually needs it
 const fmt = (v) => { if(v==null||!isFinite(v)) return '–'; const r2=Math.round(v*100)/100; return Math.abs(r2*10-Math.round(r2*10))<1e-6 ? r2.toFixed(1) : r2.toFixed(2); };
@@ -103,6 +104,8 @@ function layout(){
     if(!L && m>0 && Math.min(it.mL,it.mR)<Math.min(S.minM,m)-1e-9) it.status.push(['warn','사이드 데포 주의']);
   });
   if(!msgs.length && placed.length) msgs.push(['ok','겹침 없이 모두 따로 붙일 수 있어요.']);
+  const outR=placed.filter(it=>Math.abs(it.p)>RANGE+1e-9);
+  if(outR.length) msgs.push(['warn',`포지션 ${outR.map(it=>pTxt(it.p)).join(', ')}은(는) 공정 신뢰 범위(-${RANGE} ~ +${RANGE})를 벗어나요. 특이사항이 아니면 확인해 주세요.`]);
   if(!placed.length) msgs.push(['warn','포지션을 입력해 주세요.']);
   return {placed, longs, msgs, f, m};
 }
@@ -117,6 +120,9 @@ function drawMap(res){
   el('circle',{cx:0,cy:0,r:R,fill:'var(--wafer)',stroke:'var(--wafer-edge)','stroke-width':0.05},svg);
   el('line',{x1:-R,y1:0,x2:R,y2:0,stroke:'var(--wafer-edge)','stroke-width':0.03,'stroke-dasharray':'0.25 0.2'},svg);
   el('line',{x1:0,y1:-0.4,x2:0,y2:0.4,stroke:'var(--muted)','stroke-width':0.04},svg);
+  // 노치 (왼쪽 끝)
+  el('path',{d:`M${-R-0.05} -0.4 L${-R+0.4} 0 L${-R-0.05} 0.4 Z`,fill:'var(--panel)',stroke:'none'},svg);
+  el('path',{d:`M${-R} -0.4 L${-R+0.4} 0 L${-R} 0.4`,fill:'none',stroke:'var(--wafer-edge)','stroke-width':0.05,'stroke-linejoin':'round'},svg);
   const bad=new Set(res.placed.filter(x=>x.status.some(s=>s[0]==='bad')).map(x=>x.i));
   res.longs.forEach(L=>{
     const anyBad=L.members.some(m=>bad.has(m.i));
