@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>웻지 포지션 배치 프로그램</title>
+<link rel="stylesheet" href="style.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f6874">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="웻지 배치">
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>웻지 포지션 배치 프로그램</h1>
+  <p>공정 번호와 포지션만 넣으면 마진과 긴 쿠폰 길이를 자동으로 계산하고, 30 cm 자에 테이프 붙일 위치를 표시합니다.</p>
+</header>
+
+<section class="panel">
+  <h2>공정 설정</h2>
+  <div class="row">
+    <label class="f">공정 번호<input type="text" class="proc" id="proc" placeholder="3784"></label>
+    <label class="f">샘플 크기(cm)<select id="fSel"></select></label>
+    <label class="f" id="fCustomWrap">직접 입력(cm)<input type="number" id="fCustom" step="0.1" min="0.1"></label>
+    <label class="chk"><input type="checkbox" id="useM">여유 마진 설정</label>
+    <label class="f" id="mWrap">마진(cm, 한쪽)<input type="number" id="mVal" step="0.05" min="0"></label>
+  </div>
+  <label class="f">포지션 목록 (쉼표나 공백으로 구분)
+    <input type="text" class="wide" id="pos" placeholder="-8, -5.5, -3, -1.5, +0.5, +5.5" spellcheck="false"></label>
+  <p class="note" id="sizeNote"></p>
+  <details>
+    <summary>고급 설정</summary>
+    <div class="row">
+      <label class="f">자 중앙 눈금(cm)<input type="number" id="rulerC" step="0.1"></label>
+      <label class="f">쿠폰 사이 최소 간격(cm)<input type="number" id="gap" step="0.1" min="0"></label>
+      <label class="f">측정 영역 사이 최소 간격(cm)<input type="number" id="kerf" step="0.05" min="0"></label>
+      <label class="f">쿠폰이 겹칠 때<select id="mergeMode"><option value="long">긴 쿠폰으로 합치기</option><option value="shrink">마진 줄여 따로 붙이기</option></select></label>
+      <label class="f">사이드 데포 경고 마진(cm)<input type="number" id="minM" step="0.05" min="0"></label>
+    </div>
+  </details>
+</section>
+
+<section class="panel">
+  <h2>웨이퍼 배치 <small>12인치(Ø30 cm), 중심선 위 배치, 아래 눈금은 30 cm 자</small></h2>
+  <ul class="msgs" id="msgs"></ul>
+  <div class="map" id="map"></div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--coupon);border:1px solid var(--final)"></i>쿠폰(재단 크기)</span>
+    <span><i class="sw" style="background:var(--final)"></i>측정 샘플 영역</span>
+    <span><i class="sw" style="background:var(--bad)"></i>충돌</span>
+    <span>샘플 위·아래 숫자: 포지션 (자 위치)</span>
+    <span>점선: 긴 쿠폰 절단선</span>
+    <span style="color:var(--warn)">긴 쿠폰 위 숫자: 두 샘플 사이 거리(cm)</span>
+    <span>▲ 테이프 표시 위치</span>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>붙이는 위치 <span id="procTag" style="font-family:var(--mono);font-weight:500;color:var(--accent)"></span></h2>
+  <div class="tbl"><table>
+    <thead><tr><th>포지션</th><th>자 위치</th><th>샘플 크기</th><th>재단 크기(cm)</th><th>마진 좌 / 우(cm)</th><th>붙이는 위치</th></tr></thead>
+    <tbody id="rBody"></tbody>
+  </table></div>
+  <details id="gPanel">
+    <summary>긴 쿠폰 재단표 펼쳐 보기 (모든 길이는 쿠폰 왼쪽 끝, 자 눈금이 작은 쪽 기준)</summary>
+    <div class="groups" id="groups" style="margin-top:10px"></div>
+  </details>
+</section>
+
+</div>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+// 웹 주소로 열었을 때만 앱(오프라인) 기능 켜기. 파일을 더블클릭해서 열 때는 그냥 넘어감.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('service-worker.js').catch(() => {});
+}
+</script>
+</body>
+</html>
