@@ -65,3 +65,6 @@ tr.bad td{background:var(--bad-soft)}
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .sw{width:14px;height:10px;border-radius:2px;display:inline-block}
 .copyout{font-family:var(--mono);font-size:12px;white-space:pre;overflow-x:auto;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:10px;margin:0}
+.calc table{width:auto;min-width:min(100%,420px)}
+.calc th,.calc td{padding:5px 14px 5px 0}
+.calc caption{text-align:left;font-size:12px;color:var(--muted);padding-bottom:4px}

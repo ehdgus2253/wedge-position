@@ -9,6 +9,7 @@
 //   - 이웃 쿠폰(마진 포함)이 겹치면 하나의 긴 쿠폰으로 합치고,
 //     두 샘플 사이 간격을 반씩 나눠 각 샘플의 마진으로 계산
 //   - 샘플(측정 영역) 자체가 겹치면 한 런에서 불가능으로 표시
+//   - 두께로 입력하면 웻지 두께 계산식(config.js의 guns)을 거꾸로 풀어 포지션을 구함
 // ============================================================
 (function(){
 const C = window.CONFIG || {};
@@ -26,7 +27,33 @@ const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const SIZES = (C.sampleSizes && C.sampleSizes.length) ? C.sampleSizes : [1, 1.2];
 let S = {proc:C.defaultProcess ?? '', fSel:String(SIZES[0]), fCustom:SIZES[0], useM:C.defaultUseMargin ?? true, m:C.defaultMargin ?? 0.5,
   pos:C.defaultPositions ?? '', rulerC:C.rulerCenter ?? 15, gap:C.minCouponGap ?? 0, kerf:C.minSampleGap ?? 0,
-  mergeMode:C.mergeMode ?? 'long', minM:C.sideDepoWarn ?? 0.3};
+  mergeMode:C.mergeMode ?? 'long', minM:C.sideDepoWarn ?? 0.3,
+  mode:C.defaultMode ?? 'thk', thk:C.defaultThicknesses ?? '', gun:C.defaultGun ?? 'Gun2', centers:{}, step:String(C.positionStep ?? 0.1)};
+
+// ---------- 웻지 두께 계산식 (엑셀 Gun 시트와 동일) ----------
+const GUNS = (C.guns && C.guns.length) ? C.guns : [];
+const gunOf = id => GUNS.find(g=>g.id===id) || GUNS[0];
+const centerOf = g => { const v=+S.centers[g.id]; return v>0 ? v : g.center; };
+function thkAt(g, x, center){
+  const th=g.angle*Math.PI/180;
+  const r=Math.hypot(g.R0*Math.cos(th)-x, g.R0*Math.sin(th));   // 타깃까지 거리 (y = 0 선 위)
+  const [a4,a3,a2,a1,a0]=g.poly||[0,0,0,0,0];
+  return center*(1+a4*r**4+a3*r**3+a2*r**2+a1*r+a0)*(g.la*r+g.lb);
+}
+// 목표 두께가 나오는 포지션 찾기 (-R ~ +R에서 모든 해를 찾고, 신뢰 범위 안 + 중심에 가까운 해를 고름)
+function posFor(g, t, center){
+  const F=x=>thkAt(g,x,center)-t, roots=[], h=0.05;
+  for(let x=-R; x<R-1e-9; x+=h){
+    let a=x, b=Math.min(R,x+h), fa=F(a), fb=F(b);
+    if(fa===0){ roots.push(a); continue; }
+    if(fa*fb<0){ for(let k=0;k<60;k++){ const mid=(a+b)/2, fm=F(mid); if(fa*fm<=0){b=mid;fb=fm;}else{a=mid;fa=fm;} } roots.push((a+b)/2); }
+  }
+  if(!roots.length) return null;
+  roots.sort((u,v)=> ((Math.abs(u)>RANGE)-(Math.abs(v)>RANGE)) || Math.abs(u)-Math.abs(v));
+  return roots[0];
+}
+function thkRange(g, center, lim){ let lo=Infinity, hi=-Infinity; for(let x=-lim;x<=lim+1e-9;x+=0.1){ const t=thkAt(g,x,center); lo=Math.min(lo,t); hi=Math.max(hi,t);} return [lo,hi]; }
+const f3 = v => (v==null||!isFinite(v)) ? '–' : v.toFixed(3);
 // 샘플 크기 선택 목록 만들기
 SIZES.forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=`${Number(v).toFixed(1)} × ${Number(v).toFixed(1)}`; $('fSel').appendChild(o); });
 { const o=document.createElement('option'); o.value='c'; o.textContent='직접 입력'; $('fSel').appendChild(o); }
@@ -42,19 +69,43 @@ $('fSel').onchange=e=>{S.fSel=e.target.value; recompute();};
 $('fCustom').oninput=e=>{S.fCustom=Math.max(0.1,+e.target.value||1); recompute();};
 $('useM').onchange=e=>{S.useM=e.target.checked; recompute();};
 $('mVal').oninput=e=>{S.m=Math.max(0,+e.target.value||0); recompute();};
-$('pos').oninput=e=>{S.pos=e.target.value; recompute();};
+$('pos').oninput=e=>{ if(S.mode==='thk') S.thk=e.target.value; else S.pos=e.target.value; recompute();};
+GUNS.forEach(g=>{ const o=document.createElement('option'); o.value=g.id; o.textContent=g.label; $('gun').appendChild(o); });
+if(!GUNS.some(g=>g.id===S.gun) && GUNS.length) S.gun=GUNS[0].id;
+const syncInputs=()=>{ $('mode').value=S.mode; $('gun').value=S.gun; $('center').value=centerOf(gunOf(S.gun)); $('step').value=S.step;
+  $('pos').value = S.mode==='thk' ? S.thk : S.pos;
+  $('pos').placeholder = S.mode==='thk' ? '1.0, 1.1, 1.2, 1.25' : '-8, -5.5, -3, -1.5, +0.5, +5.5';
+  $('listLabel').textContent = S.mode==='thk' ? '목표 두께 목록 (nm, 쉼표나 공백으로 구분)' : '포지션 목록 (쉼표나 공백으로 구분)'; };
+$('mode').onchange=e=>{S.mode=e.target.value; syncInputs(); recompute();};
+$('gun').onchange=e=>{S.gun=e.target.value; syncInputs(); recompute();};
+$('center').oninput=e=>{ const v=+e.target.value; if(v>0){ S.centers[S.gun]=v; recompute(); } };
+$('step').onchange=e=>{S.step=e.target.value; recompute();};
+syncInputs();
 
 const finalSize=()=> S.fSel==='c' ? Math.max(0.1,+S.fCustom||1) : +S.fSel;
 const margin=()=> S.useM ? Math.max(0,+S.m||0) : 0;
-function parsePositions(){
-  return S.pos.replace(/[−–]/g,'-').split(/[\s,;]+/).filter(x=>x!=='').map(Number).filter(isFinite);
+const parseNums = txt => String(txt).replace(/[−–]/g,'-').split(/[\s,;]+/).filter(x=>x!=='').map(Number).filter(isFinite);
+// 입력을 샘플 목록으로: [{p: 포지션, target: 목표 두께 또는 null}]
+function getEntries(msgs){
+  if(S.mode!=='thk') return parseNums(S.pos).map(p=>({p, target:null}));
+  const g=gunOf(S.gun), c=centerOf(g), step=+S.step, out=[];
+  if(!g) return out;
+  parseNums(S.thk).forEach(t=>{
+    if(!(t>0)) return;
+    const x=posFor(g,t,c);
+    if(x==null){ const [lo,hi]=thkRange(g,c,R); msgs.push(['bad',`목표 두께 ${t} nm는 웨이퍼 위(±${R} cm)에서 나오지 않아요. 이 조건에서 가능한 두께는 ${f3(lo)} ~ ${f3(hi)} nm예요. 중심 두께를 바꾸거나 다른 건을 쓰세요.`]); return; }
+    const p = step>0 ? Math.round(x/step)*step : Math.round(x*1000)/1000;
+    out.push({p:Math.round(p*1000)/1000, target:t});
+  });
+  return out;
 }
 const nameOf = p => (S.proc? '#'+S.proc+'_' : '') + pTxt(p);
 
 // ---------- 2. 배치 계산 (겹침 검사, 긴 쿠폰 합치기, 마진 자동 계산) ----------
 function layout(){
   const f=finalSize(), m=margin(), msgs=[];
-  const items=parsePositions().map((p,i)=>({i, p, name:nameOf(p), f, m, mL:m, mR:m, w:f+2*m, status:[], group:null}));
+  const g=gunOf(S.gun), c=g?centerOf(g):0;
+  const items=getEntries(msgs).map((e,i)=>({i, p:e.p, target:e.target, thk: g? thkAt(g,e.p,c) : null, name:nameOf(e.p), f, m, mL:m, mR:m, w:f+2*m, status:[], group:null}));
   const placed=[...items].sort((a,b)=>a.p-b.p);
   const links=[];
   for(let k=0;k<placed.length-1;k++){
@@ -109,10 +160,10 @@ function layout(){
     if(l<-lim-1e-9||r>lim+1e-9){ it.status.push(['bad','웨이퍼 밖']); msgs.push(['bad',`${it.name}: 쿠폰이 웨이퍼 가장자리(±${fmt(lim)} cm)를 벗어나요.`]); }
     if(!L && m>0 && Math.min(it.mL,it.mR)<Math.min(S.minM,m)-1e-9) it.status.push(['warn','사이드 데포 주의']);
   });
-  if(!msgs.length && placed.length) msgs.push(['ok','겹침 없이 모두 따로 붙일 수 있어요.']);
+  if(!msgs.some(x=>x[0]!=='ok') && placed.length) msgs.push(['ok','겹침 없이 모두 따로 붙일 수 있어요.']);
   const outR=placed.filter(it=>Math.abs(it.p)>RANGE+1e-9);
   if(outR.length) msgs.push(['warn',`포지션 ${outR.map(it=>pTxt(it.p)).join(', ')}은(는) 공정 신뢰 범위(-${RANGE} ~ +${RANGE})를 벗어나요. 특이사항이 아니면 확인해 주세요.`]);
-  if(!placed.length) msgs.push(['warn','포지션을 입력해 주세요.']);
+  if(!placed.length && !msgs.length) msgs.push(['warn', S.mode==='thk' ? '목표 두께를 입력해 주세요.' : '포지션을 입력해 주세요.']);
   return {placed, longs, msgs, f, m};
 }
 
@@ -191,6 +242,19 @@ function renderResults(res){
   const ul=$('msgs'); ul.innerHTML='';
   res.msgs.forEach(([c,t])=>{ const li=document.createElement('li'); li.className=c; li.textContent=t; ul.appendChild(li); });
   $('procTag').textContent = S.proc ? '#'+S.proc : '';
+  // 입력칸 아래 계산 결과: 포지션 / 목표 두께 / 예상 두께
+  { const box=$('calcBox'); box.innerHTML='';
+    if(res.placed.length){
+      const t=document.createElement('table'), thk=S.mode==='thk';
+      t.innerHTML=`<caption>${thk?'계산된 포지션':'포지션별 예상 두께'} (${esc(gunOf(S.gun)?.label||'')})</caption><thead><tr><th>포지션</th>${thk?'<th>목표 두께(nm)</th>':''}<th>예상 두께(nm)</th></tr></thead>`;
+      const tb=document.createElement('tbody');
+      res.placed.forEach(it=>{ const tr=document.createElement('tr');
+        [[pTxt(it.p),'n'], ...(thk?[[String(it.target),'n']]:[]), [f3(it.thk),'n']].forEach(([v,c])=>{const td=document.createElement('td'); td.className=c; td.textContent=v; tr.appendChild(td);});
+        tb.appendChild(tr); });
+      t.appendChild(tb); box.appendChild(t);
+    } }
+  { const g=gunOf(S.gun); if(g){ const c=centerOf(g), [lo,hi]=thkRange(g,c,RANGE);
+    $('gunNote').textContent = `${g.label} · 중심 두께 ${c} nm 기준, 포지션 -${RANGE} ~ +${RANGE}에서 두께 ${f3(lo)} ~ ${f3(hi)} nm (포지션 0: ${f3(thkAt(g,0,c))} nm). 계산식은 웻지 두께 계산 엑셀(ver180905)과 같아요.`; } }
   const tb=$('rBody'); tb.innerHTML='';
   res.placed.forEach(it=>{
     const tr=document.createElement('tr');
@@ -223,6 +287,78 @@ function renderResults(res){
 }
 
 
-function recompute(){ const res=layout(); drawMap(res); renderResults(res); save(); }
+let LAST=null;
+function recompute(){ const res=layout(); LAST=res; drawMap(res); renderResults(res); updateComment(); save(); }
+
+// ---------- 4. VSM 정리 엑셀 만들기 (기본 양식의 sample info B4:F15만 채움) ----------
+if(S.xTemp==null) S.xTemp=C.defaultTemp ?? '350C';
+if(S.xMat==null) S.xMat=(C.gunMaterials||{})[S.gun] ?? C.defaultMaterial ?? '';
+if(S.xComment==null) S.xComment='';
+if(S.xEdited==null) S.xEdited=false;            // 사람이 comment를 직접 고쳤는지
+$('xTemp').value=S.xTemp; $('xMat').value=S.xMat;
+const autoComment=()=>{ const g=gunOf(S.gun); const c=g?centerOf(g):0; return `${S.xMat||''} w-${Number(c.toFixed(3))} nm`.trim(); };
+function updateComment(){ if(!S.xEdited){ S.xComment=autoComment(); } $('xComment').value=S.xComment; }
+$('xTemp').oninput=e=>{S.xTemp=e.target.value.trim(); save();};
+$('xMat').oninput=e=>{S.xMat=e.target.value.trim(); updateComment(); save();};
+$('xComment').oninput=e=>{S.xComment=e.target.value; S.xEdited = S.xComment.trim()!=='' && S.xComment!==autoComment(); save();};
+$('xAuto').onclick=()=>{ S.xEdited=false; updateComment(); save(); };
+// 스퍼터 건을 바꾸면 물질도 건에 맞게 (물질을 직접 고친 적이 없을 때만)
+$('gun').addEventListener('change',()=>{ const m=(C.gunMaterials||{})[S.gun]; if(m && !S.xMatEdited){ S.xMat=m; $('xMat').value=m; updateComment(); save(); } });
+$('xMat').addEventListener('input',()=>{ S.xMatEdited=true; });
+const xmlEsc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function setCell(xml, ref, value){
+  // 빈 셀 <c r="B4" s=".."/> 또는 값이 있는 셀을 새 값으로 바꿈 (서식 s는 유지)
+  const re=new RegExp('<c r="'+ref+'"((?:\\s+(?!t=)[a-zA-Z:]+="[^"]*")*)(?:\\s+t="[^"]*")?((?:\\s+[a-zA-Z:]+="[^"]*")*)\\s*(?:/>|>[\\s\\S]*?</c>)');
+  if(!re.test(xml)) throw new Error('양식에서 '+ref+' 칸을 찾지 못했어요');
+  const body = (typeof value==='number')
+    ? '><v>'+value+'</v></c>'
+    : ' t="inlineStr"><is><t>'+xmlEsc(value)+'</t></is></c>';
+  return xml.replace(re,(m,a1,a2)=>'<c r="'+ref+'"'+a1+a2+body);
+}
+async function makeExcel(){
+  const msg=$('xMsg'); msg.textContent='';
+  try{
+    if(!window.JSZip || !window.VSM_TEMPLATE_B64) throw new Error('양식 파일(template.js)이나 jszip.min.js를 불러오지 못했어요.');
+    if(!S.proc) throw new Error('공정 번호를 입력해 주세요.');
+    const res=LAST||layout();
+    let rows=[...res.placed].sort((a,b)=>(a.thk??0)-(b.thk??0));
+    if(!rows.length) throw new Error('포지션이 없어요.');
+    let note='';
+    if(rows.length>12){ note=` 샘플이 ${rows.length}개라 처음 12개만 넣었어요.`; rows=rows.slice(0,12); }
+    const zip=await JSZip.loadAsync(window.VSM_TEMPLATE_B64,{base64:true});
+    // sample info 시트 파일 찾기
+    const wb=await zip.file('xl/workbook.xml').async('string');
+    const rels=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    const m=wb.match(/<sheet [^>]*name="sample info"[^>]*r:id="([^"]+)"/); if(!m) throw new Error('양식에 sample info 시트가 없어요.');
+    const t=rels.match(new RegExp('Id="'+m[1]+'"[^>]*Target="([^"]+)"'))||rels.match(new RegExp('Target="([^"]+)"[^>]*Id="'+m[1]+'"'));
+    const path='xl/'+t[1].replace(/^\/?xl\//,'');
+    let xml=await zip.file(path).async('string');
+    const comment=(S.xComment||'').trim()||autoComment();  // 빈칸이면 자동값
+    rows.forEach((it,i)=>{ const r=4+i;
+      xml=setCell(xml,'B'+r,'#'+S.proc);
+      xml=setCell(xml,'C'+r,comment);
+      xml=setCell(xml,'D'+r,Math.round(it.p*1000)/1000);
+      if(it.thk!=null) xml=setCell(xml,'E'+r,Math.round(it.thk*1000)/1000);
+      xml=setCell(xml,'F'+r,S.xTemp||'');
+    });
+    zip.file(path,xml);
+    // 열 때 전체 다시 계산
+    zip.file('xl/workbook.xml', wb.replace(/<calcPr([^>]*?)\/>/, (mm,a)=> a.includes('fullCalcOnLoad')?mm:'<calcPr'+a+' fullCalcOnLoad="1"/>'));
+    const name='#'+S.proc+'.xlsx';
+    if(window.Neutralino && Neutralino.os && Neutralino.filesystem){        // exe 버전: 저장 위치 고르기
+      const u8=await zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
+      const dest=await Neutralino.os.showSaveDialog('엑셀 양식 저장',{defaultPath:name,filters:[{name:'Excel',extensions:['xlsx']}]});
+      if(!dest){ msg.textContent='저장을 취소했어요.'; return; }
+      await Neutralino.filesystem.writeBinaryFile(dest.endsWith('.xlsx')?dest:dest+'.xlsx', u8.buffer);
+      msg.textContent=`${dest} 에 저장했어요 (샘플 ${rows.length}개).`+note;
+    } else {                                                                 // 웹 버전: 다운로드
+      const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click();
+      setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},2000);
+      msg.textContent=`${name} 를 만들었어요 (샘플 ${rows.length}개).`+note+' 다운로드가 시작되지 않으면 이 화면에서는 다운로드가 막혀 있는 거예요. 프로그램(exe)이나 GitHub 주소에서 써 주세요.';
+    }
+  }catch(err){ msg.textContent='만들지 못했어요: '+err.message; }
+}
+$('xMake').onclick=makeExcel;
 recompute();
 })();

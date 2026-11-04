@@ -26,6 +26,28 @@ window.CONFIG = {
   // 처음 열었을 때 "여유 마진 설정" 체크 여부 (true / false)
   defaultUseMargin: true,
 
+  // ---------- 웻지 두께 계산 (Wedge_thickness_calculator_ver180905.xlsx 와 같은 계산식) ----------
+  // 두께 = 중심 두께 × (1 + a4·r^4 + a3·r^3 + a2·r^2 + a1·r + a0) × (la·r + lb)
+  // r = 타깃에서 웨이퍼 위 위치까지 거리(cm). 타깃은 중심에서 R0 cm, 각도 angle(도) 방향에 있음.
+  // poly = [a4, a3, a2, a1, a0]. 엑셀의 Gun 시트 CN20(R0), CN24(la), CP24(lb), CM32~CM36(poly) 값.
+  // 프로파일을 새로 측정해서 엑셀을 갱신하면 여기 숫자만 바꾸면 됩니다.
+  guns: [
+    { id: "Gun1", label: "Gun1 (Mo, Ru, Ta, Ti)",  center: 0.85,      R0: 26.515, angle: 120,
+      la: -0.05592710898900338, lb: 2.4619996600994907, poly: [0, 0, 0, 0, 0] },
+    { id: "Gun2", label: "Gun2 (B4C, CFB, Fe, MgO)", center: 1.1069972, R0: 26.515, angle: 120,
+      la: -0.05513535710167197, lb: 2.4381404729306935, poly: [0, 0, 0, 0, 0] },
+    { id: "Gun3", label: "Gun3 (Si, Pt, Co, W)",   center: 0.7,       R0: 26.515, angle: 0,
+      la: -0.05006125159716062, lb: 2.3731654603666814,
+      poly: [4.736551233035649e-07, -6.060062794787481e-06, -0.0005128625916011357, 0.0034187267937151014, 0.10217425753710419] }
+  ],
+  defaultGun: "Gun2",
+  defaultTemp: "350C",         // VSM 정리 엑셀의 temp. 칸 기본값
+  defaultMaterial: "CFB",      // comment에 들어갈 웻지 물질 기본값 (건별 값이 없을 때)
+  gunMaterials: { Gun2: "CFB", Gun3: "W" },   // 스퍼터 건을 바꾸면 자동으로 들어갈 물질 (없는 건은 그대로 둠, 필요하면 Gun1: "Ta" 처럼 추가)
+  defaultMode: "thk",          // 처음 입력 방식: "thk" = 두께로 입력, "pos" = 포지션으로 입력
+  positionStep: 0.1,           // 두께로 입력할 때 계산된 포지션 반올림 단위 (0 = 반올림 안 함)
+  defaultThicknesses: "1.0, 1.1, 1.2, 1.25",
+
   // 처음 열었을 때 들어있는 공정 번호와 포지션 (예시)
   defaultProcess: "3784",
   defaultPositions: "-8, -5.5, -3, -1.5, 0, +5.5",

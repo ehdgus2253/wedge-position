@@ -16,7 +16,7 @@
 <div class="wrap">
 <header>
   <h1>웻지 포지션 배치 프로그램</h1>
-  <p>공정 번호와 포지션만 넣으면 마진과 긴 쿠폰 길이를 자동으로 계산하고, 30 cm 자에 테이프 붙일 위치를 표시합니다.</p>
+  <p>원하는 두께나 포지션을 넣으면 웻지 포지션, 마진, 긴 쿠폰 길이를 자동으로 계산하고 30 cm 자에 붙일 위치를 표시합니다.</p>
 </header>
 
 <section class="panel">
@@ -28,17 +28,25 @@
     <label class="chk"><input type="checkbox" id="useM">여유 마진 설정</label>
     <label class="f" id="mWrap">마진(cm, 한쪽)<input type="number" id="mVal" step="0.05" min="0"></label>
   </div>
-  <label class="f">포지션 목록 (쉼표나 공백으로 구분)
-    <input type="text" class="wide" id="pos" placeholder="-8, -5.5, -3, -1.5, +0.5, +5.5" spellcheck="false"></label>
-  <p class="note" id="sizeNote"></p>
+  <div class="row">
+    <label class="f">입력 방식<select id="mode"><option value="thk">두께로 입력 (포지션 자동 계산)</option><option value="pos">포지션으로 입력</option></select></label>
+    <label class="f">스퍼터 건<select id="gun"></select></label>
+    <label class="f">중심 두께(nm)<input type="number" id="center" step="0.01" min="0"></label>
+  </div>
+  <label class="f"><span id="listLabel">포지션 목록 (쉼표나 공백으로 구분)</span>
+    <input type="text" class="wide" id="pos" spellcheck="false"></label>
+  <div class="tbl calc" id="calcBox"></div>
   <details>
     <summary>고급 설정</summary>
+    <p class="note" id="gunNote" style="margin-top:10px"></p>
+    <p class="note" id="sizeNote"></p>
     <div class="row">
       <label class="f">자 중앙 눈금(cm)<input type="number" id="rulerC" step="0.1"></label>
       <label class="f">쿠폰 사이 최소 간격(cm)<input type="number" id="gap" step="0.1" min="0"></label>
       <label class="f">측정 영역 사이 최소 간격(cm)<input type="number" id="kerf" step="0.05" min="0"></label>
       <label class="f">쿠폰이 겹칠 때<select id="mergeMode"><option value="long">긴 쿠폰으로 합치기</option><option value="shrink">마진 줄여 따로 붙이기</option></select></label>
       <label class="f">사이드 데포 경고 마진(cm)<input type="number" id="minM" step="0.05" min="0"></label>
+      <label class="f">계산된 포지션 반올림<select id="step"><option value="0.1">0.1 cm</option><option value="0.5">0.5 cm</option><option value="0">반올림 안 함</option></select></label>
     </div>
   </details>
 </section>
@@ -70,8 +78,25 @@
   </details>
 </section>
 
+<section class="panel">
+  <h2>VSM 정리 엑셀 만들기 <small>기본 양식의 sample info(샘플 번호, comment, 포지션, 두께, 온도)를 채운 파일을 만들어요</small></h2>
+  <div class="row">
+    <label class="f">열처리 온도<input type="text" id="xTemp" class="proc" placeholder="350C"></label>
+    <label class="f">웻지 물질<input type="text" id="xMat" class="proc" placeholder="CFB"></label>
+    <label class="f" style="flex:1;min-width:220px">comment<input type="text" id="xComment" class="wide" style="font-size:13.5px;padding:5px 7px" spellcheck="false"></label>
+    <button id="xAuto" class="x" title="위에 입력한 정보로 comment를 다시 채워요">자동으로 다시 채우기</button>
+  </div>
+  <div class="row">
+    <button class="pri" id="xMake">엑셀 양식 생성</button>
+    <span class="note" id="xMsg"></span>
+  </div>
+  <p class="note">파일 이름은 #공정번호.xlsx, 샘플은 두께가 얇은 순서로 들어가요. comment는 "물질 w-중심두께 nm"로 자동으로 채워지고, 직접 고치면 그 내용이 유지돼요.</p>
+</section>
+
 </div>
 <script src="config.js"></script>
+<script src="jszip.min.js"></script>
+<script src="template.js"></script>
 <script src="app.js"></script>
 <script>
 // 웹 주소로 열었을 때만 앱(오프라인) 기능 켜기. 파일을 더블클릭해서 열 때는 그냥 넘어감.
