@@ -66,7 +66,7 @@ function layout(){
       const need=a.p+f+S.kerf;
       msgs.push(['bad',`${a.name}와 ${b.name}는 샘플 영역이 ${fmt(S.kerf-finGap)} cm 겹쳐 한 런에서 만들 수 없어요. 두 포지션은 최소 ${short(f+S.kerf)} cm 떨어져야 합니다 (예: ${pTxt(need)} 이상).`]);
       links.push(false);
-    } else links.push(phyGap < S.gap-1e-9);
+    } else links.push(phyGap <= S.gap+1e-9); // 마진까지 맞닿으면(간격 0) 긴 쿠폰으로 합침
   }
   const groups=[]; let cur=[];
   placed.forEach((it,k)=>{ cur.push(it); if(!(k<links.length && links[k])){ groups.push(cur); cur=[]; } });
@@ -84,8 +84,14 @@ function layout(){
         else { cuts.push({at:r, note:`${pTxt(g[k].p)} 끝`}); cuts.push({at:l, note:`${pTxt(g[k+1].p)} 시작`}); }
       }
       g.forEach(x=>{ x.group=id; x.status.push(['warn',`긴 쿠폰 ${id}`]); });
-      longs.push({id, members:g, start, end, w:f+2*m, cuts});
-      msgs.push(['warn',`${g.map(x=>pTxt(x.p)).join(', ')} 포지션은 쿠폰이 겹쳐서 긴 쿠폰 ${id} 하나로 합쳤어요 (${fmt(end-start)} × ${fmt(f+2*m)} cm).`]);
+      const splits=[], tight=[];
+      for(let k=0;k<g.length-1;k++){
+        const gapS=(g[k+1].p-f/2)-(g[k].p+f/2);
+        if(gapS >= 2*m-1e-6) splits.push((g[k].p+f/2+g[k+1].p-f/2)/2);
+        else tight.push({a:g[k], b:g[k+1], mm:gapS/2});
+      }
+      longs.push({id, members:g, start, end, w:f+2*m, cuts, splits, tight});
+      msgs.push(['warn',`${g.map(x=>pTxt(x.p)).join(', ')} 포지션은 쿠폰이 맞닿거나 겹쳐서 긴 쿠폰 ${id} 하나로 합쳤어요 (${fmt(end-start)} × ${fmt(f+2*m)} cm).`]);
     } else {
       for(let k=0;k<g.length-1;k++){ const a=g[k], b=g[k+1];
         const room=((b.p-f/2)-(a.p+f/2)-S.gap)/2;
@@ -127,7 +133,8 @@ function drawMap(res){
   res.longs.forEach(L=>{
     const anyBad=L.members.some(m=>bad.has(m.i));
     el('rect',{x:L.start,y:-L.w/2,width:L.end-L.start,height:L.w,fill:'var(--coupon)',stroke:anyBad?'var(--bad)':'var(--final)','stroke-width':0.05,rx:0.05},svg);
-    L.cuts.forEach(c=> el('line',{x1:c.at,y1:-L.w/2-0.1,x2:c.at,y2:L.w/2+0.1,stroke:'var(--fg)','stroke-width':0.035,'stroke-dasharray':'0.12 0.08'},svg));
+    // 마진 손실 없이 나눌 수 있는 위치: 초록 선
+    L.splits.forEach(x=> el('line',{x1:x,y1:-L.w/2-0.15,x2:x,y2:L.w/2+0.15,stroke:'var(--ok)','stroke-width':0.07},svg));
     const top=-L.w/2;
     L.members.slice(0,-1).forEach((a,k)=>{
       const b=L.members[k+1], r=a.p+a.f/2, l=b.p-b.f/2, gap=l-r, mid=(r+l)/2;
@@ -143,10 +150,12 @@ function drawMap(res){
     const isBad=bad.has(it.i);
     if(!it.group) el('rect',{x:it.edgeL,y:-it.w/2,width:it.edgeR-it.edgeL,height:it.w,fill:'var(--coupon)',stroke:isBad?'var(--bad)':'var(--final)','stroke-width':0.05,rx:0.05,'fill-opacity':0.9},svg);
     el('rect',{x:it.p-it.f/2,y:-it.f/2,width:it.f,height:it.f,fill:isBad?'var(--bad)':'var(--final)','fill-opacity':0.85},svg);
-    const half=Math.max(it.w,1)/2, up=!it.group && k%2===0;
-    const base = up ? -half-0.75 : half+0.6+((it.group && k%2) ? 0.95 : 0);
-    el('text',{x:it.p,y:base,'text-anchor':'middle','font-size':0.42,fill:'var(--fg)','font-family':'var(--mono)','font-weight':500},svg,pTxt(it.p));
-    el('text',{x:it.p,y:base+0.42,'text-anchor':'middle','font-size':0.32,fill:'var(--muted)','font-family':'var(--mono)'},svg,`(${fmt(S.rulerC+it.p)})`);
+    // 포지션은 샘플 안, 자 위치는 샘플 바로 아래(마진 영역 안, 마진이 좁으면 쿠폰 아래)
+    const fs=Math.min(0.38, it.f*0.92/(pTxt(it.p).length*0.6)); // 글자가 샘플 폭을 넘지 않게
+    el('text',{x:it.p,y:fs*0.36,'text-anchor':'middle','font-size':fs,fill:'var(--panel)','font-family':'var(--mono)','font-weight':600},svg,pTxt(it.p));
+    const inM = res.m>=0.3;
+    const ry2 = inM ? it.f/2+res.m/2+0.1 : it.w/2+0.4;
+    el('text',{x:it.p,y:ry2,'text-anchor':'middle','font-size':0.28,fill:'var(--muted)','font-family':'var(--mono)'},svg,fmt(S.rulerC+it.p));
   });
   const ry=4.5;
   el('rect',{x:-S.rulerC,y:ry,width:RULER_LEN,height:1.15,fill:'var(--panel)',stroke:'var(--muted)','stroke-width':0.04},svg);
@@ -188,7 +197,7 @@ function renderResults(res){
     if(it.status.some(s=>s[0]==='bad')) tr.className='bad';
     const add=(txt,cls)=>{const td=document.createElement('td'); if(cls) td.className=cls; td.textContent=txt; tr.appendChild(td);};
     add(pTxt(it.p),'n');
-    add(`${fmt(rc+it.p-f/2)} ~ ${fmt(rc+it.p+f/2)}`,'n');
+    add(fmt(rc+it.p),'n');
     const L=res.longs.find(g=>g.id===it.group);
     if(L){ add(`길게 (${L.members.length}개)`); add(`${fmt(L.end-L.start)} × ${fmt(L.w)}`,'n'); }
     else { add('단일'); add(`${fmt(it.edgeR-it.edgeL)} × ${fmt(it.w)}`,'n'); }
@@ -206,6 +215,7 @@ function renderResults(res){
       `<span class="n">붙이는 위치: 자 눈금 ${fmt(rc+L.start)} ~ ${fmt(rc+L.end)}</span>`,
       `<span class="n">샘플 영역: ${L.members.map(x=>`${esc(pTxt(x.p))} → ${fmt(x.p-f/2-L.start)}~${fmt(x.p+f/2-L.start)} cm`).join(' · ')}</span>`,
       `<span class="n">절단선: ${L.cuts.map(c=>`${fmt(c.at-L.start)} cm (${esc(c.note)})`).join(' · ')}</span>`,
+      m>0 ? `<span class="n">나눠서 만들 때: ${L.splits.length ? `마진 손실 없이 나눌 수 있는 위치 자 눈금 ${L.splits.map(x=>fmt(rc+x)).join(', ')}` : '마진 손실 없이 나눌 수 있는 위치 없음'}${L.tight.length ? ` · 나누면 마진이 줄어드는 곳 ${L.tight.map(t=>`${esc(pTxt(t.a.p))}|${esc(pTxt(t.b.p))} (마진 ${fmt(t.mm)})`).join(', ')}` : ''}</span>` : '',
       m>0 ? `<span class="note">양 끝은 ${fmt(m)} cm, 폭 방향은 위아래 ${fmt(m)} cm씩 잘라냅니다.</span>` : ''
     ].join('');
     gb.appendChild(d);
